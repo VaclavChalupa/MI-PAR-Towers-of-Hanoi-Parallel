@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?fileVersion 4.0.0?>
+
+<cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
+	<storageModule moduleId="org.eclipse.cdt.core.settings">
+		<cconfiguration id="cdt.managedbuild.config.bupc.exe.macosx.debug.969930190">
+			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="cdt.managedbuild.config.bupc.exe.macosx.debug.969930190" moduleId="org.eclipse.cdt.core.settings" name="Debug">
+				<externalSettings/>
+				<extensions>
+					<extension id="org.eclipse.cdt.core.MachO64" point="org.eclipse.cdt.core.BinaryParser"/>
+					<extension id="org.eclipse.cdt.core.CWDLocator" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GCCErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GASErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GmakeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GLDErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.AbsoftErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.VCErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.GFortranErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.G95FortranErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.MakeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.LaheyFortranErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.NAGErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.PGIErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.errorparsers.xlc.XlcErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.errorparsers.xlf.XLFCompilerErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.IntelFortranErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+				</extensions>
+			</storageModule>
+			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
+				<configuration artifactName="${ProjName}" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe" cleanCommand="rm -rf" description="Debug configuration" id="cdt.managedbuild.config.bupc.exe.macosx.debug.969930190" name="Debug" parent="cdt.managedbuild.config.bupc.exe.macosx.debug">
+					<folderInfo id="cdt.managedbuild.config.bupc.exe.macosx.debug.969930190." name="/" resourcePath="">
+						<toolChain id="cdt.managedbuild.toolchain.bupc.macosx.exe.base.2102724606" name="MacOSX Berkeley UPC" superClass="cdt.managedbuild.toolchain.bupc.macosx.exe.base">
+							<targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.MachO64" id="cdt.managedbuild.target.bupc.platform.macosx.base.643774586" name="Debug Platform" osList="macosx" superClass="cdt.managedbuild.target.bupc.platform.macosx.base"/>
+							<builder buildPath="${workspace_loc:/MI-PAR/Debug}" id="org.eclipse.cdt.managedbuilder.bupc.builder.macosx.base.1640391355" name="CDT Internal Builder.Debug" superClass="org.eclipse.cdt.managedbuilder.bupc.builder.macosx.base"/>
+							<tool command="mpicc" id="org.eclipse.cdt.managedbuild.tool.bupc.compiler.macosx.base.1969629242" name="Berkeley UPC Compiler" superClass="org.eclipse.cdt.managedbuild.tool.bupc.compiler.macosx.base">
+								<option defaultValue="true" id="bupc.ui.compiler.general.debug.1122698266" superClass="bupc.ui.compiler.general.debug" valueType="boolean"/>
+							</tool>
+							<tool command="mpicc" id="org.eclipse.cdt.managedbuild.tool.bupc.linker.macosx.base.474620793" name="Berkeley UPC Linker" superClass="org.eclipse.cdt.managedbuild.tool.bupc.linker.macosx.base">
+								<option defaultValue="true" id="bupc.ui.linker.general.debug.916430296" superClass="bupc.ui.linker.general.debug" valueType="boolean"/>
+							</tool>
+						</toolChain>
+					</folderInfo>
+				</configuration>
+			</storageModule>
+			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
+		</cconfiguration>
+		<cconfiguration id="cdt.managedbuild.config.bupc.exe.macosx.release.1798638279">
+			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="cdt.managedbuild.config.bupc.exe.macosx.release.1798638279" moduleId="org.eclipse.cdt.core.settings" name="Release">
+				<externalSettings/>
+				<extensions>
+					<extension id="org.eclipse.cdt.core.MachO64" point="org.eclipse.cdt.core.BinaryParser"/>
+					<extension id="org.eclipse.photran.core.AbsoftErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.VCErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.GFortranErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.CWDLocator" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.G95FortranErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.MakeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.LaheyFortranErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GCCErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GASErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.NAGErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.PGIErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.errorparsers.xlc.XlcErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GmakeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.errorparsers.xlf.XLFCompilerErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.photran.core.IntelFortranErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GLDErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+				</extensions>
+			</storageModule>
+			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
+				<configuration artifactName="${ProjName}" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.release,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe" cleanCommand="rm -rf" description="Release configuration" id="cdt.managedbuild.config.bupc.exe.macosx.release.1798638279" name="Release" parent="cdt.managedbuild.config.bupc.exe.macosx.release">
+					<folderInfo id="cdt.managedbuild.config.bupc.exe.macosx.release.1798638279." name="/" resourcePath="">
+						<toolChain id="cdt.managedbuild.toolchain.bupc.exe.macosx.release.1556646076" name="MacOSX Berkeley UPC" superClass="cdt.managedbuild.toolchain.bupc.exe.macosx.release">
+							<targetPlatform id="cdt.managedbuild.target.bupc.platform.exe.macosx.release.1465187162" name="Debug Platform" superClass="cdt.managedbuild.target.bupc.platform.exe.macosx.release"/>
+							<builder buildPath="${workspace_loc:/MI-PAR/Release}" id="org.eclipse.cdt.managedbuilder.bupc.builder.exe.macosx.release.815704077" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="CDT Internal Builder" superClass="org.eclipse.cdt.managedbuilder.bupc.builder.exe.macosx.release"/>
+							<tool command="mpicc" id="org.eclipse.cdt.managedbuild.tool.bupc.compiler.exe.macosx.release.1546912196" name="Berkeley UPC Compiler" superClass="org.eclipse.cdt.managedbuild.tool.bupc.compiler.exe.macosx.release">
+								<inputType id="cdt.managedbuild.tool.bupc.compiler.input.1466788420" name="UPC sources" superClass="cdt.managedbuild.tool.bupc.compiler.input"/>
+							</tool>
+							<tool command="mpicc" id="org.eclipse.cdt.managedbuild.tool.bupc.linker.exe.macosx.release.1426968986" name="Berkeley UPC Linker" superClass="org.eclipse.cdt.managedbuild.tool.bupc.linker.exe.macosx.release">
+								<inputType id="cdt.managedbuild.tool.bupc.linker.input.220634175" superClass="cdt.managedbuild.tool.bupc.linker.input"/>
+							</tool>
+						</toolChain>
+					</folderInfo>
+				</configuration>
+			</storageModule>
+			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
+		</cconfiguration>
+	</storageModule>
+	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
+		<project id="MI-PAR.cdt.managedbuild.target.bupc.macosx.exe.1237155637" name="Executable" projectType="cdt.managedbuild.target.bupc.macosx.exe"/>
+	</storageModule>
+	<storageModule moduleId="scannerConfiguration">
+		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+	</storageModule>
+	<storageModule moduleId="refreshScope" versionNumber="1">
+		<resource resourceType="PROJECT" workspacePath="/MI-PAR"/>
+	</storageModule>
+	<storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
+</cproject>
