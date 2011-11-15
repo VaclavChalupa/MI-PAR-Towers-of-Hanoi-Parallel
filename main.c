@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
 	/* find out number of processes */
 	MPI_Comm_size(MPI_COMM_WORLD, &processors);
 
-	printf("Hello world from process %i", process_id);
+	printf("\nHello world from process %i", process_id);
 
 	if (process_id == 0) {
 		printf("Hello, I'm the master!");
@@ -90,21 +90,24 @@ int main(int argc, char *argv[]) {
 				}
 				towers[i] = tower;
 			}
+
 			fclose(file);
 
 			// initial work split
 			int* inputData;
+			inputData = (int*) malloc(5 * sizeof(*inputData));
 			inputData[0] = towersCount;
 			inputData[1] = discsCount;
 			inputData[2] = destTower;
 			inputData[3] = process_id;
 			inputData[4] = processors;
 			for (i = 1; i < processors; i++) {
-				MPI_Send(inputData, sizeof(*inputData), MPI_INT, i, MSG_INIT, MPI_COMM_WORLD);
+				MPI_Send(inputData, sizeof(*inputData), MPI_INT, i, MSG_INIT,
+						MPI_COMM_WORLD);
 			}
 
 			//printState(towers, towersCount);
-/*
+
 			process(towers, towersCount, discsCount, destTower);
 
 			for (i = 0; i < towersCount; i++) {
@@ -112,7 +115,8 @@ int main(int argc, char *argv[]) {
 			}
 			free(towers);
 
-			printf("\n***END***\n");*/
+			printf("\n***END***\n");
+
 		} else {
 			perror("enter.txt could not be opened");
 			return 1;
@@ -120,9 +124,10 @@ int main(int argc, char *argv[]) {
 
 	} else {
 		// other processes (process_id > 0)
-
 	}
-	return 0;
-	run();
+
+	// start the messaging client
+	run(process_id, processors);
+
 }
 

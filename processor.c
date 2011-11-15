@@ -32,6 +32,7 @@ int minSteps;
 int destTower;
 int process_id;
 int processors;
+int waiting;
 struct SolutionQueue {
 	ProcessItem *head;
 };
@@ -47,6 +48,7 @@ static void deserializeStack(int* data);
 static int loopDetected(Stack* stack);
 static void processStepWithStack(struct SolutionQueue* sq);
 void freeInspectStack(struct SolutionQueue* sq);
+void askForWork(int processor);
 
 int* serializeState(Tower* _towers) {
 	int * stack_item, i;
@@ -193,11 +195,11 @@ void processStepWithStack(struct SolutionQueue* sq) {
 		/* deserialize */
 
 		if (isDestTowerComplete(&_towers[destTower - 1], discsCount)) {
-			printf(
-					"\n\n\n\n\n\n\n\n\n\n\n\n-----------------------------------------------------------------------------------------FOUND %i\n",
-					step);
-			printState(_towers, towersCount);
-
+			/*printf(
+			 "\n\n\n\n\n\n\n\n\n\n\n\n-----------------------------------------------------------------------------------------FOUND %i\n",
+			 step);
+			 printState(_towers, towersCount);
+			 */
 			if (step < minSteps) {
 				minSteps = step;
 				inspectStack(stack, sq);
@@ -248,14 +250,26 @@ void processStepWithStack(struct SolutionQueue* sq) {
 		free(_towers);
 	}
 	freeStack();
+	askForWork(-1);
+}
 
-	// my stack is now empty... I just wonder if there is some more work to be done?
-	int processor;
-	processor = random() % processors;
-	if (processor == process_id) {
-		// instead of sending to me, send to master
-		processor = 0;
+/** My stack is now empty... I just wonder if there is some more work to be done?
+ *  @param processor if negative, randomly select one to ask
+ */
+void askForWork(int processor) {
+	if (process_id == 0) {
+		// processor 0 shouldn't ask anyone for more work...
+	//	return;
 	}
+ 	if (processor < 0) {
+		processor = random() % processors;
+		if (processor == process_id) {
+			// instead of sending to me, send to master
+			processor = 0;
+		}
+	}
+	printf("\nProcessor %i is asking processor %i for work", process_id, processor);
+	fflush(stdout);
 	MPI_Send("REQ", sizeof("REQ"), MPI_CHAR, processor, MSG_WORK_REQUEST,
 			MPI_COMM_WORLD);
 }
@@ -357,9 +371,14 @@ int process(Tower *_towers, int _towersCount, int _discsCount, int _destTower) {
 	return minSteps;
 }
 
-void run() {
+void run(int _process_id, int _processors) {
+	printf("Calling run on processor %i", _process_id);
+	fflush(stdout);
+	process_id = _process_id;
+	processors = _processors;
 	int counter = 0;
-	while (!isStackEmpty()) {
+	int waiting = 1;
+	while (waiting || !isStackEmpty()) {
 		counter++;
 		if ((counter % CHECK_MSG_AMOUNT) == 0) {
 			int flag;
@@ -372,30 +391,38 @@ void run() {
 				//a pripadne cislo chyby (status.MPI_ERROR)
 				switch (status.MPI_TAG) {
 				case MSG_INIT: {
-					int* initData;
-					MPI_Recv(&initData, 3, MPI_INT, status.MPI_SOURCE,
-							status.MPI_TAG, MPI_COMM_WORLD, &status);
+					printf("\nProcess %i starting...", process_id);
+					fflush(stdout);
+					int initData[5];
+					MPI_Recv(&initData, status._count, MPI_INT,
+							status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD,
+							&status);
 					towersCount = initData[0];
 					discsCount = initData[1];
 					destTower = initData[2];
 					process_id = initData[3];
 					processors = initData[4];
-					printf("Process %i starting...", process_id);
+					printf("\nProcess %i received data: towersCount=%i, discsCount=%i", process_id, towersCount, discsCount);
+					fflush(stdout);
+					askForWork(0);
 				}
 					break;
 				case MSG_WORK_REQUEST: { // another process requests some work
+					printf("\nProcessor %i received request from %i", process_id, status.MPI_SOURCE);
+					fflush(stdout);
 					if (stackSize() > processors) {
 						// ok, I have some work for you
 						int* data;
 						Stack* divided;
 						divided = divideStack();
 						data = serializeStack(divided);
-						MPI_Send(data, sizeof(data), MPI_CHAR, 0, MSG_WORK_SENT,
+						MPI_Send(data, sizeof(data), MPI_CHAR,
+								status.MPI_SOURCE, MSG_WORK_SENT,
 								MPI_COMM_WORLD);
 					} else {
 						// I have no work to send you
-						MPI_Send("N", sizeof("N"), MPI_CHAR, 0, MSG_WORK_NOWORK,
-								MPI_COMM_WORLD);
+						MPI_Send("N", sizeof("N"), MPI_CHAR, status.MPI_SOURCE,
+								MSG_WORK_NOWORK, MPI_COMM_WORLD);
 					}
 				}
 					break;
@@ -404,6 +431,8 @@ void run() {
 					// receive the message
 					MPI_Recv(&data, status._count, MPI_INT, status.MPI_SOURCE,
 							status.MPI_TAG, MPI_COMM_WORLD, &status);
+					printf("\nProcessor %i received work from %i", process_id, status.MPI_SOURCE);
+					fflush(stdout);
 					// deserialize
 					deserializeStack(data);
 					// recreate the latest tower
