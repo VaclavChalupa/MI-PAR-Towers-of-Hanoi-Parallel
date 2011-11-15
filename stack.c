@@ -113,4 +113,5 @@ Stack* divideStack() {
 		prev = item;
 		item = stack->top;
 	}
+	return divided;
 }
