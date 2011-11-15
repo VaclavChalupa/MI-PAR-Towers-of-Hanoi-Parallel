@@ -44,7 +44,7 @@ static void inspectStack(Stack * stack, struct SolutionQueue* sq);
 static int* serializeState(Tower* _towers);
 static Tower* deserializeState(int* data);
 static int* serializeStack(Stack* stack);
-static void deserializeStack(int* data);
+static void deserializeStack(int* data, int size);
 static int loopDetected(Stack* stack);
 static void processStepWithStack(struct SolutionQueue* sq);
 void freeInspectStack(struct SolutionQueue* sq);
@@ -100,6 +100,7 @@ Tower* deserializeState(int* data) {
 
 int* serializeStack(Stack* stack) {
 	int* stackData;
+	stackData = (int*) malloc(stack->num * sizeof(stackData));
 	StackItem* item;
 	item = stack->top;
 	int offset;
@@ -123,11 +124,12 @@ int* serializeStack(Stack* stack) {
 	return stackData;
 }
 
-void deserializeStack(int* stackData) {
+void deserializeStack(int* stackData, int size) {
 	int offset, bulk;
 	bulk = discsCount + 3;
-	for (offset = 0; offset < sizeof(stackData); offset += bulk) {
+	for (offset = 0; offset < size; offset += bulk) {
 		int* data;
+		data = (int*) malloc(discsCount * sizeof(data));
 		int step, i, j;
 		int disc;
 		for (disc = 0; disc < discsCount; disc++) {
@@ -368,14 +370,6 @@ int process(Tower *_towers) {
 	return minSteps;
 }
 
-/** Called by processor 0 to pass in the arguments for calculation. */
-void run(int _process_id, int _processors, int _towersCount, _discsCount, _destTower) {
-	towersCount = _towersCount;
-	discsCount = _discsCount;
-	destTower = _destTower;
-	run(_process_id, _processors);
-}
-
 /** Start computing and messaging. Accepts parameters that pass the information about processors. */
 void run(int _process_id, int _processors) {
 	printf("\nCalling run on processor %i", _process_id);
@@ -418,15 +412,18 @@ void run(int _process_id, int _processors) {
 						// ok, I have some work for you
 						int* data;
 						Stack* divided;
-						divided = divideStack();
+						/*divided = divideStack();
 						data = serializeStack(divided);
 						MPI_Send(data, sizeof(data), MPI_CHAR,
 								status.MPI_SOURCE, MSG_WORK_SENT,
-								MPI_COMM_WORLD);
+								MPI_COMM_WORLD);*/
+						printf("\nProcessor %i replies to %i by sending data.", process_id, status.MPI_SOURCE);
 					} else {
 						// I have no work to send you
-						MPI_Send("N", sizeof("N"), MPI_CHAR, status.MPI_SOURCE,
-								MSG_WORK_NOWORK, MPI_COMM_WORLD);
+						/*MPI_Send("N", sizeof("N"), MPI_CHAR, status.MPI_SOURCE,
+								MSG_WORK_NOWORK, MPI_COMM_WORLD);*/
+						printf("\nProcessor %i replies to %i saying 'I don't have anything for you'.", process_id, status.MPI_SOURCE);
+
 					}
 				}
 					break;
@@ -438,12 +435,12 @@ void run(int _process_id, int _processors) {
 					printf("\nProcessor %i received work from %i", process_id, status.MPI_SOURCE);
 					fflush(stdout);
 					// deserialize
-					deserializeStack(data);
+					deserializeStack(data, status._count);
 					// recreate the latest tower
 					int step, i, j;
 					Tower* towers = deserializeState(top(&step, &i, &j));
 					// start processing
-					process(towers, towersCount, discsCount, destTower);
+					process(towers);
 				}
 					break;
 				case MSG_WORK_NOWORK: {
@@ -492,9 +489,18 @@ void run(int _process_id, int _processors) {
 				}
 			}
 		}
-		process(towers);
+		//process(towers);
 	}
 }
+
+/** Called by processor 0 to pass in the arguments for calculation. */
+void initParameters(int _towersCount, int _discsCount, int _destTower) {
+	towersCount = _towersCount;
+	discsCount = _discsCount;
+	destTower = _destTower;
+}
+
+
 /*
  static int**  serializeStateMatrix() {
  int ** stack_item, i;

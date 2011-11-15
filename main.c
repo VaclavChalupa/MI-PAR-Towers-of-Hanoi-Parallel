@@ -107,7 +107,7 @@ int main(int argc, char *argv[]) {
 			free(inputData);
 
 			//printState(towers, towersCount);
-
+			initParameters(towersCount, discsCount, destTower);
 			//process(towers, towersCount, discsCount, destTower);
 
 		} else {
@@ -118,8 +118,6 @@ int main(int argc, char *argv[]) {
 	} else {
 		// other processes (process_id > 0)
 	}
-
-	// start the messaging client
 	run(process_id, processors);
 
 }

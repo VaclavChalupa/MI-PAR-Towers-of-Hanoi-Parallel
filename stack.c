@@ -93,7 +93,7 @@ int stackSize() {
 
 Stack* divideStack() {
 	Stack* divided;
-	divided = malloc(sizeof(* divided));
+	divided = malloc(sizeof(divided));
 	divided->top = NULL;
 	divided->num = 0;
 	StackItem* item;
