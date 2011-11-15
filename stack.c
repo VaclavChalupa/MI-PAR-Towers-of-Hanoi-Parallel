@@ -35,7 +35,7 @@ void pushItem(StackItem* stackItem) {
 	stack->num++;
 }
 
-void push(int* data, int step, int i, int j) {
+void push(int* data, int step, int i, int j, int movedDisc) {
 	/*printf("\nPUSH\n");*/
 	StackItem* stackItem;
 	stackItem = (StackItem*) malloc(sizeof(* stackItem));
@@ -45,6 +45,7 @@ void push(int* data, int step, int i, int j) {
 	stackItem->step = step;
 	stackItem->i = i;
 	stackItem->j = j;
+	stackItem->movedDisc = movedDisc;
 	pushItem(stackItem);
 }
 
@@ -55,7 +56,7 @@ void setState(int _i, int _j) {
 	}
 }
 
-int* top(int* step, int* i, int* j) {
+int* top(int* step, int* i, int* j, int* movedDisc) {
 	if(isStackEmpty()) {
 		perror("ERROR: stack is empty for top");
 		return NULL;
@@ -63,6 +64,7 @@ int* top(int* step, int* i, int* j) {
 	*step = stack->top->step;
 	*i = stack->top->i;
 	*j = stack->top->j;
+	*movedDisc = stack->top->movedDisc;
 	return stack->top->data;
 }
 
@@ -77,6 +79,7 @@ void pop() {
 	stack->num--;
 	tmp = stack->top;
 	stack->top = stack->top->next;
+	free(tmp->data);
 	free(tmp);
 }
 

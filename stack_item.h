@@ -17,6 +17,10 @@ typedef struct StackItem {
 		int j;
 		/** Reference to the next item in the stack. */
         struct StackItem *next;
+
+        /** Prev move detection **/
+        int movedDisc;
+
 } StackItem;
 
 #endif /* STACK_ITEM_H_ */

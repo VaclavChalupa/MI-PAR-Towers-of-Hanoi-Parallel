@@ -51,30 +51,30 @@ void freeInspectStack(struct SolutionQueue* sq);
 void askForWork(int processor);
 
 int* serializeState(Tower* _towers) {
-	int * stack_item, i;
-	stack_item = (int*) malloc(discsCount * sizeof(int));
+	int * stack_item_data, i;
+	stack_item_data = (int*) malloc(discsCount * sizeof(int));
 
 	for (i = 0; i < discsCount; i++) {
-		stack_item[i] = -1;
+		stack_item_data[i] = -1;
 	}
 
 	for (i = 0; i < towersCount; i++) {
 		Disc* disc;
 		disc = _towers[i].top;
 		while (disc != NULL) {
-			stack_item[disc->size - 1] = i; /* disc size -> tower indexed form 0*/
+			stack_item_data[disc->size - 1] = i; /* disc size -> tower indexed form 0*/
 			disc = disc->next;
 		}
 	}
 
 	for (i = 0; i < discsCount; i++) {
-		if (stack_item[i] == -1) {
-			perror("ERROR: stack_item defect");
+		if (stack_item_data[i] == -1) {
+			perror("ERROR: stack_item_data defect by serialization");
 			return NULL;
 		}
 	}
 
-	return stack_item;
+	return stack_item_data;
 }
 
 /**
@@ -126,11 +126,11 @@ int* serializeStack(Stack* stack) {
 
 void deserializeStack(int* stackData, int size) {
 	int offset, bulk;
-	bulk = discsCount + 3;
+	bulk = discsCount + 4;
 	for (offset = 0; offset < size; offset += bulk) {
 		int* data;
 		data = (int*) malloc(discsCount * sizeof(data));
-		int step, i, j;
+		int step, i, j, movedDisc;
 		int disc;
 		for (disc = 0; disc < discsCount; disc++) {
 			data[disc] = stackData[offset + disc];
@@ -138,7 +138,8 @@ void deserializeStack(int* stackData, int size) {
 		step = stackData[offset + discsCount];
 		i = stackData[offset + discsCount + 1];
 		j = stackData[offset + discsCount + 2];
-		push(data, step, i, j);
+		movedDisc = j = stackData[offset + discsCount + 3];
+		push(data, step, i, j, movedDisc);
 	}
 }
 
@@ -167,47 +168,36 @@ void processStepWithStack(struct SolutionQueue* sq) {
 	counter = 0;
 
 	/* initial state */
-	push(serializeState(towers), 0, 0, 0);
+	push(serializeState(towers), 0, 0, 0, -1);
 
 	while (!isStackEmpty()) {
-		int step, iStart, jStart, i, moved = 0;
+		int step, iStart, jStart, prevMovedDisc, i, moved = 0;
 		int* stack_data;
 		Tower* _towers;
 
-		if (++counter % 10000 == 0) {
-			printf(".");
-		}
+		stack_data = top(&step, &iStart, &jStart, &prevMovedDisc);
 
-		stack_data = top(&step, &iStart, &jStart);
-
-		/*printf("STEP %i, num = %i\n", step, stack->num);*/
 		_towers = deserializeState(stack_data);
-
-		/*printf("\ni: %i; j: %i\n", iStart, jStart);
-		 printf("----------\n");
-		 printState(_towers, towersCount);
-		 printf("----------\n");*/
 
 		if (step > max || loopDetected(stack)) {
 			/* not a perspective branch solution */
 			pop();
+			freeTowers(_towers, &towersCount);
 			continue;
 		}
 
-		/* deserialize */
-
 		if (isDestTowerComplete(&_towers[destTower - 1], discsCount)) {
-			/*printf(
-			 "\n\n\n\n\n\n\n\n\n\n\n\n-----------------------------------------------------------------------------------------FOUND %i\n",
-			 step);
-			 printState(_towers, towersCount);
-			 */
+
+			printf("\n\n\n\n------------------------------------FOUND %i\n", step);
+
 			if (step < minSteps) {
+				max = step;
 				minSteps = step;
 				inspectStack(stack, sq);
 			}
 
 			pop();
+			freeTowers(_towers, &towersCount);
 
 			if (step <= min) {
 				break;
@@ -227,17 +217,17 @@ void processStepWithStack(struct SolutionQueue* sq) {
 				resultDisc = move(&_towers[i], &_towers[j]);
 
 				if (resultDisc > 0) {
-					int* d = serializeState(_towers);
 					if (j + 1 >= towersCount) {
 						setState(i + 1, 0);
 					} else {
 						setState(i, j + 1);
 					}
 					if (moved == 0) {
-						push(d, step + 1, 0, 0);
-						moved++;
+						if(prevMovedDisc != resultDisc) {
+							push(serializeState(_towers), step+1, 0, 0, resultDisc);
+							moved++;
+						}
 					}
-					/*undoMove(&_towers[i],&_towers[j]);*/
 					break;
 				}
 				jStart = 0;
@@ -249,7 +239,7 @@ void processStepWithStack(struct SolutionQueue* sq) {
 		if (moved == 0) {
 			pop();
 		}
-		free(_towers);
+		freeTowers(_towers, &towersCount);
 	}
 	freeStack();
 	askForWork(-1);
@@ -308,11 +298,6 @@ void inspectStack(Stack * stack, struct SolutionQueue* sq) {
 	n = NULL;
 
 	freeInspectStack(sq);
-	if (sq->head != NULL) {
-		printf("KUA");
-	} else {
-		printf("OKOK");
-	}
 
 	tmp = stack->top;
 	currentState = stack->top->data;
@@ -437,8 +422,8 @@ void run(int _process_id, int _processors) {
 					// deserialize
 					deserializeStack(data, status._count);
 					// recreate the latest tower
-					int step, i, j;
-					Tower* towers = deserializeState(top(&step, &i, &j));
+					int step, i, j, prevMovedDisc;
+					Tower* towers = deserializeState(top(&step, &i, &j, &prevMovedDisc));
 					// start processing
 					process(towers);
 				}
