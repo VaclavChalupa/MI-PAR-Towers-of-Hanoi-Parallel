@@ -9,7 +9,8 @@
 #define MSG_WORK_SENT    1001
 #define MSG_WORK_NOWORK  1002
 #define MSG_TOKEN        1003
-#define MSG_FINISH       1004
+#define MSG_INIT		 1004
+#define MSG_FINISH       1005
 
 #include "state_printer.h";
 #include "tower.h"
@@ -29,6 +30,8 @@ int max;
 int currentSteps;
 int minSteps;
 int destTower;
+int process_id;
+int processors;
 struct SolutionQueue {
 	ProcessItem *head;
 };
@@ -39,6 +42,8 @@ static int compareStates(int* prevState, int* currentState);
 static void inspectStack(Stack * stack, struct SolutionQueue* sq);
 static int* serializeState(Tower* _towers);
 static Tower* deserializeState(int* data);
+static int* serializeStack(Stack* stack);
+static void deserializeStack(int* data);
 static int loopDetected(Stack* stack);
 static void processStepWithStack(struct SolutionQueue* sq);
 void freeInspectStack(struct SolutionQueue* sq);
@@ -70,6 +75,9 @@ int* serializeState(Tower* _towers) {
 	return stack_item;
 }
 
+/**
+ * Restore towers and discs from the data from stack.
+ */
 Tower* deserializeState(int* data) {
 	int i;
 	Tower* _towers;
@@ -86,6 +94,48 @@ Tower* deserializeState(int* data) {
 	}
 
 	return _towers;
+}
+
+int* serializeStack(Stack* stack) {
+	int* stackData;
+	StackItem* item;
+	item = stack->top;
+	int offset;
+	offset = 0;
+	while (item != NULL) {
+		int i;
+		for (i = 0; i < discsCount + 3; i++) {
+			if (i < discsCount) {
+				stackData[offset + i] = item->data[i];
+			} else if (i == discsCount) {
+				stackData[offset + i] = item->step;
+			} else if (i == discsCount + 1) {
+				stackData[offset + i] = item->i;
+			} else if (i == discsCount + 2) {
+				stackData[offset + i] = item->j;
+			}
+		}
+		offset += (discsCount + 3);
+		item = item->next;
+	}
+	return stackData;
+}
+
+void deserializeStack(int* stackData) {
+	int offset, bulk;
+	bulk = discsCount + 3;
+	for (offset = 0; offset < sizeof(stackData); offset += bulk) {
+		int* data;
+		int step, i, j;
+		int disc;
+		for (disc = 0; disc < discsCount; disc++) {
+			data[disc] = stackData[offset + disc];
+		}
+		step = stackData[offset + discsCount];
+		i = stackData[offset + discsCount + 1];
+		j = stackData[offset + discsCount + 2];
+		push(data, step, i, j);
+	}
 }
 
 int loopDetected(Stack* stack) {
@@ -113,7 +163,7 @@ void processStepWithStack(struct SolutionQueue* sq) {
 	counter = 0;
 
 	/* initial state */
-	push(serializeState(towers), 0);
+	push(serializeState(towers), 0, 0, 0);
 
 	while (!isStackEmpty()) {
 		int step, iStart, jStart, i, moved = 0;
@@ -180,7 +230,7 @@ void processStepWithStack(struct SolutionQueue* sq) {
 						setState(i, j + 1);
 					}
 					if (moved == 0) {
-						push(d, step + 1);
+						push(d, step + 1, 0, 0);
 						moved++;
 					}
 					/*undoMove(&_towers[i],&_towers[j]);*/
@@ -198,6 +248,16 @@ void processStepWithStack(struct SolutionQueue* sq) {
 		free(_towers);
 	}
 	freeStack();
+
+	// my stack is now empty... I just wonder if there is some more work to be done?
+	int processor;
+	processor = random() % processors;
+	if (processor == process_id) {
+		// instead of sending to me, send to master
+		processor = 0;
+	}
+	MPI_Send("REQ", sizeof("REQ"), MPI_CHAR, processor, MSG_WORK_REQUEST,
+			MPI_COMM_WORLD);
 }
 
 void describeMove(int* prevState, int* currentState, int* disc,
@@ -214,6 +274,7 @@ void describeMove(int* prevState, int* currentState, int* disc,
 	*disc = *sourceTower = *destTower = -1;
 }
 
+/** Check if the two states are same. Returns true if they are same, false if they differ in at least one item. */
 int compareStates(int* prevState, int* currentState) {
 	int i;
 	for (i = 0; i < discsCount; i++) {
@@ -262,11 +323,11 @@ void freeInspectStack(struct SolutionQueue* sq) {
 	sq->head = NULL;
 }
 
-int process(Tower *_towers, int _size, int _discsCount, int _destTower) {
+int process(Tower *_towers, int _towersCount, int _discsCount, int _destTower) {
 	struct SolutionQueue sq;
 
 	printf("\nPROCESS:\n");
-	towersCount = _size;
+	towersCount = _towersCount;
 	towers = _towers;
 	discsCount = _discsCount;
 	destTower = _destTower;
@@ -296,69 +357,103 @@ int process(Tower *_towers, int _size, int _discsCount, int _destTower) {
 	return minSteps;
 }
 
-int loop() {
+void run() {
 	int counter = 0;
-	while (!isStackEmpty())
-	{
+	while (!isStackEmpty()) {
 		counter++;
-		if ((counter % CHECK_MSG_AMOUNT)==0)
-		{
+		if ((counter % CHECK_MSG_AMOUNT) == 0) {
 			int flag;
 			MPI_Status status;
-			MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
-			if (flag)
-			{
+			MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag,
+					&status);
+			if (flag) {
 				//prisla zprava, je treba ji obslouzit
 				//v promenne status je tag (status.MPI_TAG), cislo odesilatele (status.MPI_SOURCE)
 				//a pripadne cislo chyby (status.MPI_ERROR)
-				switch (status.MPI_TAG)
-				{
-					case MSG_WORK_REQUEST:{// zadost o praci, prijmout a odpovedet
-											// zaslat rozdeleny zasobnik a nebo odmitnuti MSG_WORK_NOWORK
-						//if (stack.num < processors) {
-							int* data;
-							data = serializeState(towers);
-							MPI_Send(data, 100/*data size*/, MPI_CHAR, 0, MSG_WORK_SENT, MPI_COMM_WORLD);
-						//} else {
-							// I have no work to send you
-							MPI_Send("", 0, MPI_CHAR, 0, MSG_WORK_NOWORK, MPI_COMM_WORLD);
-						//}
-					}break;
-					case MSG_WORK_SENT:{// prisel rozdeleny zasobnik
-						int* data;
-						// receive the message
-						MPI_Recv(&data, 100, MPI_INT, status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD, &status);
-						// deserialize
-						Tower* towers = deserializeState(data);
-						// start processing
-						process(towers, 0, 0, 0);
-					}break;
-					case MSG_WORK_NOWORK :
-						// process I requested to give me work has nothing either
-						// let's try another process
-						// or switch to passive state and wait for token
+				switch (status.MPI_TAG) {
+				case MSG_INIT: {
+					int* initData;
+					MPI_Recv(&initData, 3, MPI_INT, status.MPI_SOURCE,
+							status.MPI_TAG, MPI_COMM_WORLD, &status);
+					towersCount = initData[0];
+					discsCount = initData[1];
+					destTower = initData[2];
+					process_id = initData[3];
+					processors = initData[4];
+					printf("Process %i starting...", process_id);
+				}
 					break;
-					case MSG_TOKEN:{
-						// finishing token
-						char* color;
-						MPI_Recv(&color, 1, MPI_CHAR, status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD, &status);
-									// - bily nebo cerny v zavislosti na stavu procesu
-						if (!isStackEmpty()) {
-							color = "W";
-						}
-						//MPI_Send(color, 1, MPI_CHAR, (process_id+1) %  processes, MSG_TOKEN, MPI_COMM_WORLD);
-					}break;
-					case MSG_FINISH:{//konec vypoctu - proces 0 pomoci tokenu zjistil, ze jiz nikdo nema praci
-									 //a rozeslal zpravu ukoncujici vypocet
-									 //mam-li reseni, odeslu procesu 0
-						char* solution;
-						MPI_Send(solution, 100/*solution size*/, MPI_CHAR, 0, MSG_FINISH, MPI_COMM_WORLD);
-									 //nasledne ukoncim svoji cinnost
-										  //jestlize se meri cas, nezapomen zavolat koncovou barieru MPI_Barrier (MPI_COMM_WORLD)
+				case MSG_WORK_REQUEST: { // another process requests some work
+					if (stackSize() > processors) {
+						// ok, I have some work for you
+						int* data;
+						Stack* divided;
+						divided = divideStack();
+						data = serializeStack(divided);
+						MPI_Send(data, sizeof(data), MPI_CHAR, 0, MSG_WORK_SENT,
+								MPI_COMM_WORLD);
+					} else {
+						// I have no work to send you
+						MPI_Send("N", sizeof("N"), MPI_CHAR, 0, MSG_WORK_NOWORK,
+								MPI_COMM_WORLD);
+					}
+				}
+					break;
+				case MSG_WORK_SENT: { // new work has arrived!
+					int* data;
+					// receive the message
+					MPI_Recv(&data, status._count, MPI_INT, status.MPI_SOURCE,
+							status.MPI_TAG, MPI_COMM_WORLD, &status);
+					// deserialize
+					deserializeStack(data);
+					// recreate the latest tower
+					int step, i, j;
+					Tower* towers = deserializeState(top(&step, &i, &j));
+					// start processing
+					process(towers, towersCount, discsCount, destTower);
+				}
+					break;
+				case MSG_WORK_NOWORK: {
+					// process I requested to give me work has nothing either
+					// let's try another process
+					int processor;
+					processor = rand() % processors;
+					if (processor == process_id) {
+						// instead of sending to me, send to master
+						processor = 0;
+					}
+					MPI_Send("REQ", sizeof("REQ"), MPI_CHAR, processor,
+							MSG_WORK_REQUEST, MPI_COMM_WORLD);
+					// (or switch to passive state and wait for token)
+				}
+					break;
+				case MSG_TOKEN: {
+					// finishing token
+					char* color;
+					MPI_Recv(&color, 1, MPI_CHAR, status.MPI_SOURCE,
+							status.MPI_TAG, MPI_COMM_WORLD, &status);
+					// - bily nebo cerny v zavislosti na stavu procesu
+					if (!isStackEmpty()) {
+						color = "W";
+					}
+					//MPI_Send(color, 1, MPI_CHAR, (process_id+1) %  processes, MSG_TOKEN, MPI_COMM_WORLD);
+				}
+					break;
+				case MSG_FINISH: { //konec vypoctu - proces 0 pomoci tokenu zjistil, ze jiz nikdo nema praci
+								   //a rozeslal zpravu ukoncujici vypocet
+								   //mam-li reseni, odeslu procesu 0
+					char* solution;
+					MPI_Send(solution, 100/*solution size*/, MPI_CHAR, 0,
+							MSG_FINISH, MPI_COMM_WORLD);
+					//nasledne ukoncim svoji cinnost
+					//jestlize se meri cas, nezapomen zavolat koncovou barieru MPI_Barrier (MPI_COMM_WORLD)
 					MPI_Finalize();
-					exit (0);
-					}break;
-					default : perror("unknown message type"); break;
+					exit(0);
+				}
+					break;
+				default:
+					perror("unknown message type");
+					break;
 				}
 			}
 		}

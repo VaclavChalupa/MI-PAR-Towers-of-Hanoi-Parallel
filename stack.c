@@ -9,7 +9,7 @@
 
 Stack * stack;
 int x = 0;
-static void pushItem(StackItem* stackItem, int step);
+static void pushItem(StackItem* stackItem);
 
 Stack * initializeStack() {
 	stack = malloc(sizeof(* stack));
@@ -29,23 +29,23 @@ void freeStack() {
 	free(stack);
 }
 
-void pushItem(StackItem* stackItem, int step) {
-	stackItem->step = step;
+void pushItem(StackItem* stackItem) {
 	stackItem->next = stack->top;
 	stack->top = stackItem;
 	stack->num++;
 }
 
-void push(int* data, int step) {
+void push(int* data, int step, int i, int j) {
 	/*printf("\nPUSH\n");*/
 	StackItem* stackItem;
 	stackItem = (StackItem*) malloc(sizeof(* stackItem));
 
 	stackItem->data = data;
 	stackItem->next = NULL;
-	stackItem->i = 0;
-	stackItem->j = 0;
-	pushItem(stackItem, step);
+	stackItem->step = step;
+	stackItem->i = i;
+	stackItem->j = j;
+	pushItem(stackItem);
 }
 
 void setState(int _i, int _j) {
@@ -85,4 +85,32 @@ int isStackEmpty() {
 		return 0;
 	}
 	return 1;
+}
+
+int stackSize() {
+	return stack->num;
+}
+
+Stack* divideStack() {
+	Stack* divided;
+	divided = malloc(sizeof(* divided));
+	divided->top = NULL;
+	divided->num = 0;
+	StackItem* item;
+	StackItem* prev;
+	item = stack->top;
+	int i;
+	while (item->next != NULL) {
+		i++;
+		if (i%2 == 0) {
+			// take away from current stack
+			StackItem* tmp;
+			tmp = item->next;
+			tmp->next = prev;
+			// put on the divided stack
+			divided->top = item;
+		}
+		prev = item;
+		item = stack->top;
+	}
 }

@@ -17,7 +17,7 @@ typedef struct {
 
 Stack * initializeStack();
 
-void push(int* data, int step);
+void push(int* data, int step, int i, int j);
 
 int* top(int* step, int* i, int* j);
 
@@ -30,5 +30,9 @@ int isStackEmpty();
 void freeStack();
 
 void setReturning();
+
+Stack* divideStack();
+
+int stackSize();
 
 #endif /* STACK_H_ */

@@ -2,6 +2,9 @@
  * main.c
  *
  */
+
+#define MSG_INIT 1004
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,7 +31,10 @@ int main(int argc, char *argv[]) {
 	/* find out number of processes */
 	MPI_Comm_size(MPI_COMM_WORLD, &processors);
 
+	printf("Hello world from process %i", process_id);
+
 	if (process_id == 0) {
+		printf("Hello, I'm the master!");
 		// I'm the starting process
 		// I have to read the data and let others take portions of it
 		static const char filename[] = "enter.txt";
@@ -86,10 +92,27 @@ int main(int argc, char *argv[]) {
 			}
 			fclose(file);
 
-			// split work
+			// initial work split
+			int* inputData;
+			inputData[0] = towersCount;
+			inputData[1] = discsCount;
+			inputData[2] = destTower;
+			inputData[3] = process_id;
+			inputData[4] = processors;
 			for (i = 1; i < processors; i++) {
-				//MPI_Send(message, strlen(message)+1, MPI_CHAR, i, MSG_FINISH, MPI_COMM_WORLD);
+				MPI_Send(inputData, sizeof(*inputData), MPI_INT, i, MSG_INIT, MPI_COMM_WORLD);
 			}
+
+			//printState(towers, towersCount);
+/*
+			process(towers, towersCount, discsCount, destTower);
+
+			for (i = 0; i < towersCount; i++) {
+				freeDiscs(&towers[i]);
+			}
+			free(towers);
+
+			printf("\n***END***\n");*/
 		} else {
 			perror("enter.txt could not be opened");
 			return 1;
@@ -99,20 +122,7 @@ int main(int argc, char *argv[]) {
 		// other processes (process_id > 0)
 
 	}
-
-	printState(towers, towersCount);
-
-	process(towers, towersCount, discsCount, destTower);
-
-	int i;
-	for (i = 0; i < towersCount; i++) {
-		freeDiscs(&towers[i]);
-	}
-	free(towers);
-
-	printf("\n***END***\n");
-
 	return 0;
-
+	run();
 }
 
