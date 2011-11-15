@@ -337,14 +337,11 @@ void freeInspectStack(struct SolutionQueue* sq) {
 	sq->head = NULL;
 }
 
-int process(Tower *_towers, int _towersCount, int _discsCount, int _destTower) {
+int process(Tower *_towers) {
 	struct SolutionQueue sq;
 
 	printf("\nPROCESS:\n");
-	towersCount = _towersCount;
 	towers = _towers;
-	discsCount = _discsCount;
-	destTower = _destTower;
 
 	sq.head = NULL;
 
@@ -371,8 +368,17 @@ int process(Tower *_towers, int _towersCount, int _discsCount, int _destTower) {
 	return minSteps;
 }
 
+/** Called by processor 0 to pass in the arguments for calculation. */
+void run(int _process_id, int _processors, int _towersCount, _discsCount, _destTower) {
+	towersCount = _towersCount;
+	discsCount = _discsCount;
+	destTower = _destTower;
+	run(_process_id, _processors);
+}
+
+/** Start computing and messaging. Accepts parameters that pass the information about processors. */
 void run(int _process_id, int _processors) {
-	printf("Calling run on processor %i", _process_id);
+	printf("\nCalling run on processor %i", _process_id);
 	fflush(stdout);
 	process_id = _process_id;
 	processors = _processors;
@@ -393,15 +399,13 @@ void run(int _process_id, int _processors) {
 				case MSG_INIT: {
 					printf("\nProcess %i starting...", process_id);
 					fflush(stdout);
-					int initData[5];
+					int initData[3];
 					MPI_Recv(&initData, status._count, MPI_INT,
 							status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD,
 							&status);
 					towersCount = initData[0];
 					discsCount = initData[1];
 					destTower = initData[2];
-					process_id = initData[3];
-					processors = initData[4];
 					printf("\nProcess %i received data: towersCount=%i, discsCount=%i", process_id, towersCount, discsCount);
 					fflush(stdout);
 					askForWork(0);
@@ -445,14 +449,7 @@ void run(int _process_id, int _processors) {
 				case MSG_WORK_NOWORK: {
 					// process I requested to give me work has nothing either
 					// let's try another process
-					int processor;
-					processor = rand() % processors;
-					if (processor == process_id) {
-						// instead of sending to me, send to master
-						processor = 0;
-					}
-					MPI_Send("REQ", sizeof("REQ"), MPI_CHAR, processor,
-							MSG_WORK_REQUEST, MPI_COMM_WORLD);
+					askForWork(-1);
 					// (or switch to passive state and wait for token)
 				}
 					break;
@@ -465,7 +462,8 @@ void run(int _process_id, int _processors) {
 					if (!isStackEmpty()) {
 						color = "W";
 					}
-					//MPI_Send(color, 1, MPI_CHAR, (process_id+1) %  processes, MSG_TOKEN, MPI_COMM_WORLD);
+					// pass the token to the next processor (or wrap to 0)
+					MPI_Send(color, 1, MPI_CHAR, (process_id+1) % processors, MSG_TOKEN, MPI_COMM_WORLD);
 				}
 					break;
 				case MSG_FINISH: { //konec vypoctu - proces 0 pomoci tokenu zjistil, ze jiz nikdo nema praci
@@ -476,6 +474,14 @@ void run(int _process_id, int _processors) {
 							MSG_FINISH, MPI_COMM_WORLD);
 					//nasledne ukoncim svoji cinnost
 					//jestlize se meri cas, nezapomen zavolat koncovou barieru MPI_Barrier (MPI_COMM_WORLD)
+					int i = 0;
+					for (i = 0; i < towersCount; i++) {
+						freeDiscs(&towers[i]);
+					}
+					free(towers);
+
+					printf("\n***END***\n");
+
 					MPI_Finalize();
 					exit(0);
 				}
@@ -486,7 +492,7 @@ void run(int _process_id, int _processors) {
 				}
 			}
 		}
-		//expand_other_states();
+		process(towers);
 	}
 }
 /*

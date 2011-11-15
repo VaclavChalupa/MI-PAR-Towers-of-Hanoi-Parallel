@@ -95,27 +95,20 @@ int main(int argc, char *argv[]) {
 
 			// initial work split
 			int* inputData;
-			inputData = (int*) malloc(5 * sizeof(*inputData));
+			inputData = (int*) malloc(3 * sizeof(*inputData));
 			inputData[0] = towersCount;
 			inputData[1] = discsCount;
 			inputData[2] = destTower;
-			inputData[3] = process_id;
-			inputData[4] = processors;
+			// send to all processors (except master) the basic calculation parameters
 			for (i = 1; i < processors; i++) {
 				MPI_Send(inputData, sizeof(*inputData), MPI_INT, i, MSG_INIT,
 						MPI_COMM_WORLD);
 			}
+			free(inputData);
 
 			//printState(towers, towersCount);
 
-			process(towers, towersCount, discsCount, destTower);
-
-			for (i = 0; i < towersCount; i++) {
-				freeDiscs(&towers[i]);
-			}
-			free(towers);
-
-			printf("\n***END***\n");
+			//process(towers, towersCount, discsCount, destTower);
 
 		} else {
 			perror("enter.txt could not be opened");
