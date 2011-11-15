@@ -25,14 +25,15 @@
 int towersCount;
 Tower *towers;
 int discsCount;
-int min;
-int max;
+int min; // by theory, solution cannot be better than this
+int max; // solution definitely won't be more expensive than this
 int currentSteps;
-int minSteps;
+int minSteps; // best solution
 int destTower;
 int process_id;
 int processors;
 int waiting;
+Stack *stack;
 struct SolutionQueue {
 	ProcessItem *head;
 };
@@ -107,7 +108,7 @@ int* serializeStack(Stack* stack) {
 	offset = 0;
 	while (item != NULL) {
 		int i;
-		for (i = 0; i < discsCount + 3; i++) {
+		for (i = 0; i < discsCount + 4; i++) {
 			if (i < discsCount) {
 				stackData[offset + i] = item->data[i];
 			} else if (i == discsCount) {
@@ -116,9 +117,11 @@ int* serializeStack(Stack* stack) {
 				stackData[offset + i] = item->i;
 			} else if (i == discsCount + 2) {
 				stackData[offset + i] = item->j;
+			} else if (i == discsCount + 3) {
+				stackData[offset + i] = item->movedDisc;
 			}
 		}
-		offset += (discsCount + 3);
+		offset += (discsCount + 4);
 		item = item->next;
 	}
 	return stackData;
@@ -138,7 +141,7 @@ void deserializeStack(int* stackData, int size) {
 		step = stackData[offset + discsCount];
 		i = stackData[offset + discsCount + 1];
 		j = stackData[offset + discsCount + 2];
-		movedDisc = j = stackData[offset + discsCount + 3];
+		movedDisc = stackData[offset + discsCount + 3];
 		push(data, step, i, j, movedDisc);
 	}
 }
@@ -162,15 +165,12 @@ int loopDetected(Stack* stack) {
 }
 
 void processStepWithStack(struct SolutionQueue* sq) {
-	Stack * stack;
 	int counter;
-	stack = initializeStack();
 	counter = 0;
 
-	/* initial state */
-	push(serializeState(towers), 0, 0, 0, -1);
-
-	while (!isStackEmpty()) {
+	if (isStackEmpty()) {
+		askForWork(-1);
+	} else {
 		int step, iStart, jStart, prevMovedDisc, i, moved = 0;
 		int* stack_data;
 		Tower* _towers;
@@ -183,12 +183,13 @@ void processStepWithStack(struct SolutionQueue* sq) {
 			/* not a perspective branch solution */
 			pop();
 			freeTowers(_towers, &towersCount);
-			continue;
+			return;
 		}
 
 		if (isDestTowerComplete(&_towers[destTower - 1], discsCount)) {
 
-			printf("\n\n\n\n------------------------------------FOUND %i\n", step);
+			printf("\n\n\n\n------------------------------------FOUND %i\n",
+					step);
 
 			if (step < minSteps) {
 				max = step;
@@ -200,9 +201,10 @@ void processStepWithStack(struct SolutionQueue* sq) {
 			freeTowers(_towers, &towersCount);
 
 			if (step <= min) {
-				break;
+				// TODO prospective solution found!!
+				return;
 			} else {
-				continue;
+				return;
 			}
 		}
 
@@ -211,6 +213,7 @@ void processStepWithStack(struct SolutionQueue* sq) {
 			for (j = jStart; j < towersCount; j++) {
 				int resultDisc;
 				if (i == j) {
+					// skip "moving" disc to the same tower
 					continue;
 				}
 
@@ -223,8 +226,9 @@ void processStepWithStack(struct SolutionQueue* sq) {
 						setState(i, j + 1);
 					}
 					if (moved == 0) {
-						if(prevMovedDisc != resultDisc) {
-							push(serializeState(_towers), step+1, 0, 0, resultDisc);
+						if (prevMovedDisc != resultDisc) {
+							push(serializeState(_towers), step + 1, 0, 0,
+									resultDisc);
 							moved++;
 						}
 					}
@@ -241,8 +245,6 @@ void processStepWithStack(struct SolutionQueue* sq) {
 		}
 		freeTowers(_towers, &towersCount);
 	}
-	freeStack();
-	askForWork(-1);
 }
 
 /** My stack is now empty... I just wonder if there is some more work to be done?
@@ -251,19 +253,21 @@ void processStepWithStack(struct SolutionQueue* sq) {
 void askForWork(int processor) {
 	if (process_id == 0) {
 		// processor 0 shouldn't ask anyone for more work...
-	//	return;
+		//	return;
 	}
- 	if (processor < 0) {
+	if (processor < 0) {
 		processor = random() % processors;
 		if (processor == process_id) {
 			// instead of sending to me, send to master
 			processor = 0;
 		}
 	}
-	printf("\nProcessor %i is asking processor %i for work", process_id, processor);
+	printf("\nProcessor %i is asking processor %i for work", process_id,
+			processor);
 	fflush(stdout);
 	MPI_Send("REQ", sizeof("REQ"), MPI_CHAR, processor, MSG_WORK_REQUEST,
 			MPI_COMM_WORLD);
+	sleep(1); // wait a little while
 }
 
 void describeMove(int* prevState, int* currentState, int* disc,
@@ -312,6 +316,7 @@ void inspectStack(Stack * stack, struct SolutionQueue* sq) {
 	}
 }
 
+/** Erase solution queue. */
 void freeInspectStack(struct SolutionQueue* sq) {
 	ProcessItem * next;
 	next = sq->head;
@@ -324,23 +329,31 @@ void freeInspectStack(struct SolutionQueue* sq) {
 	sq->head = NULL;
 }
 
-int process(Tower *_towers) {
-	struct SolutionQueue sq;
-
-	printf("\nPROCESS:\n");
+/** Process 0 first computes one level to have something to start from. After that, other processes may jump in. */
+int process0(Tower *_towers, int _towersCount, int _discsCount, int _destTower) {
 	towers = _towers;
+	towersCount = _towersCount;
+	discsCount = _discsCount;
+	destTower = _destTower;
 
+	struct SolutionQueue sq;
 	sq.head = NULL;
 
+	// calculate min and max (we know that the solution will be between those two)
 	min = minMoves(towers, towersCount, discsCount, destTower);
 	max = minSteps = maxMoves(discsCount, towersCount);
 	max = 30;
 
 	printf("\nmin: %i, max: %i , %i", min, max, minSteps);
 
+	stack = initializeStack();
+	/* initial state */
+	push(serializeState(towers), 0, 0, 0, -1);
+
 	processStepWithStack(&sq);
 
 	if (minSteps <= max) {
+		// print best solution
 		ProcessItem* pi;
 		pi = sq.head;
 		printf("\n\nDONE, Steps: %i\n\n", minSteps);
@@ -361,6 +374,13 @@ void run(int _process_id, int _processors) {
 	fflush(stdout);
 	process_id = _process_id;
 	processors = _processors;
+	// TODO the solution queue should not be here
+	struct SolutionQueue sq;
+	sq.head = NULL;
+	// end of todo
+	if (process_id != 0) { // master (rank 0) processor was initialized when process0(...) was called
+		stack = initializeStack();
+	}
 	int counter = 0;
 	int waiting = 1;
 	while (waiting || !isStackEmpty()) {
@@ -385,30 +405,37 @@ void run(int _process_id, int _processors) {
 					towersCount = initData[0];
 					discsCount = initData[1];
 					destTower = initData[2];
-					printf("\nProcess %i received data: towersCount=%i, discsCount=%i", process_id, towersCount, discsCount);
+					printf(
+							"\nProcess %i received data: towersCount=%i, discsCount=%i",
+							process_id, towersCount, discsCount);
 					fflush(stdout);
 					askForWork(0);
 				}
 					break;
 				case MSG_WORK_REQUEST: { // another process requests some work
-					printf("\nProcessor %i received request from %i", process_id, status.MPI_SOURCE);
+					printf("\nProcessor %i received request from %i",
+							process_id, status.MPI_SOURCE);
 					fflush(stdout);
 					if (stackSize() > processors) {
 						// ok, I have some work for you
 						int* data;
 						Stack* divided;
-						/*divided = divideStack();
+						divided = divideStack();
 						data = serializeStack(divided);
 						MPI_Send(data, sizeof(data), MPI_CHAR,
 								status.MPI_SOURCE, MSG_WORK_SENT,
-								MPI_COMM_WORLD);*/
-						printf("\nProcessor %i replies to %i by sending data.", process_id, status.MPI_SOURCE);
+								MPI_COMM_WORLD);
+						printf("\nProcessor %i replies to %i by sending data.",
+								process_id, status.MPI_SOURCE);
+						fflush(stdout);
 					} else {
 						// I have no work to send you
-						/*MPI_Send("N", sizeof("N"), MPI_CHAR, status.MPI_SOURCE,
-								MSG_WORK_NOWORK, MPI_COMM_WORLD);*/
-						printf("\nProcessor %i replies to %i saying 'I don't have anything for you'.", process_id, status.MPI_SOURCE);
-
+						MPI_Send("N", sizeof("N"), MPI_CHAR, status.MPI_SOURCE,
+								MSG_WORK_NOWORK, MPI_COMM_WORLD);
+						printf(
+								"\nProcessor %i replies to %i saying 'I don't have anything for you'.",
+								process_id, status.MPI_SOURCE);
+						fflush(stdout);
 					}
 				}
 					break;
@@ -417,15 +444,18 @@ void run(int _process_id, int _processors) {
 					// receive the message
 					MPI_Recv(&data, status._count, MPI_INT, status.MPI_SOURCE,
 							status.MPI_TAG, MPI_COMM_WORLD, &status);
-					printf("\nProcessor %i received work from %i", process_id, status.MPI_SOURCE);
+					printf("\nProcessor %i received work from %i", process_id,
+							status.MPI_SOURCE);
 					fflush(stdout);
 					// deserialize
 					deserializeStack(data, status._count);
 					// recreate the latest tower
 					int step, i, j, prevMovedDisc;
-					Tower* towers = deserializeState(top(&step, &i, &j, &prevMovedDisc));
+					towers = deserializeState(
+							top(&step, &i, &j, &prevMovedDisc));
 					// start processing
-					process(towers);
+					//--process(towers);
+					// will start automatically, as the processStepWithStack method is called at the end of this loop
 				}
 					break;
 				case MSG_WORK_NOWORK: {
@@ -445,7 +475,8 @@ void run(int _process_id, int _processors) {
 						color = "W";
 					}
 					// pass the token to the next processor (or wrap to 0)
-					MPI_Send(color, 1, MPI_CHAR, (process_id+1) % processors, MSG_TOKEN, MPI_COMM_WORLD);
+					MPI_Send(color, 1, MPI_CHAR, (process_id + 1) % processors,
+							MSG_TOKEN, MPI_COMM_WORLD);
 				}
 					break;
 				case MSG_FINISH: { //konec vypoctu - proces 0 pomoci tokenu zjistil, ze jiz nikdo nema praci
@@ -461,6 +492,7 @@ void run(int _process_id, int _processors) {
 						freeDiscs(&towers[i]);
 					}
 					free(towers);
+					freeStack();
 
 					printf("\n***END***\n");
 
@@ -474,17 +506,9 @@ void run(int _process_id, int _processors) {
 				}
 			}
 		}
-		//process(towers);
+		processStepWithStack(&sq);
 	}
 }
-
-/** Called by processor 0 to pass in the arguments for calculation. */
-void initParameters(int _towersCount, int _discsCount, int _destTower) {
-	towersCount = _towersCount;
-	discsCount = _discsCount;
-	destTower = _destTower;
-}
-
 
 /*
  static int**  serializeStateMatrix() {

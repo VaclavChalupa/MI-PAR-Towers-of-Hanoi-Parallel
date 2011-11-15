@@ -107,8 +107,7 @@ int main(int argc, char *argv[]) {
 			free(inputData);
 
 			//printState(towers, towersCount);
-			initParameters(towersCount, discsCount, destTower);
-			//process(towers, towersCount, discsCount, destTower);
+			process0(towers, towersCount, discsCount, destTower);
 
 			//freeTowers(towers, &towersCount);
 

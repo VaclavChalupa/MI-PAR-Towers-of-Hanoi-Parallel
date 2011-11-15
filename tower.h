@@ -25,6 +25,6 @@ int isDestTowerComplete(Tower *tower, int discCount);
 
 void freeDiscs(Tower *tower);
 
-void freeTowers(Tower* towers, int* towetsCount);
+void freeTowers(Tower* towers, int* towersCount);
 
 #endif /* TOWER_H_ */
