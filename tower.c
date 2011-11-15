@@ -87,9 +87,18 @@ void freeDiscs(Tower *tower) {
 	Disc *disc;
 	disc = tower->top;
 	while(disc != NULL) {
+		Disc* tmp = disc->next;
 		free(disc);
-		disc = disc->next;
+		disc = tmp;
 	}
 	tower->top = NULL;
+}
+
+void freeTowers(Tower* towers, int* towersCount) {
+	int i;
+	for(i = 0; i < *towersCount; i++) {
+		freeDiscs(&towers[i]);
+	}
+	free(towers);
 }
 

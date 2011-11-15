@@ -23,6 +23,8 @@ int undoMove(Tower * source, Tower *dest);
 
 int isDestTowerComplete(Tower *tower, int discCount);
 
-void freeDiscs();
+void freeDiscs(Tower *tower);
+
+void freeTowers(Tower* towers, int* towetsCount);
 
 #endif /* TOWER_H_ */
