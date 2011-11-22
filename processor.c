@@ -3,7 +3,11 @@
  *
  */
 
-#define CHECK_MSG_AMOUNT  100
+#define STACK_ITEM_ATTRS  4
+#define CHECK_MSG_AMOUNT  20
+
+#define WHITE			  1
+#define BLACK			  0
 
 #define MSG_WORK_REQUEST 1000
 #define MSG_WORK_SENT    1001
@@ -11,6 +15,7 @@
 #define MSG_TOKEN        1003
 #define MSG_INIT		 1004
 #define MSG_FINISH       1005
+#define MSG_RESULT		 1006
 
 #include "state_printer.h";
 #include "tower.h"
@@ -20,6 +25,7 @@
 #include "analyser.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "mpi.h"
 
 int towersCount;
@@ -33,10 +39,12 @@ int destTower;
 int process_id;
 int processors;
 int waiting;
-Stack *stack;
-struct SolutionQueue {
+int idle;
+Stack* stack;
+typedef struct SolutionQueue {
 	ProcessItem *head;
-};
+} SolutionQueue;
+SolutionQueue* sq;
 
 static void describeMove(int* prevState, int* currentState, int* disc,
 		int* sourceTower, int* destTower);
@@ -50,6 +58,7 @@ static int loopDetected(Stack* stack);
 static void processStepWithStack(struct SolutionQueue* sq);
 void freeInspectStack(struct SolutionQueue* sq);
 void askForWork(int processor);
+void finalize();
 
 int* serializeState(Tower* _towers) {
 	int * stack_item_data, i;
@@ -101,14 +110,15 @@ Tower* deserializeState(int* data) {
 
 int* serializeStack(Stack* stack) {
 	int* stackData;
-	stackData = (int*) malloc(stack->num * sizeof(stackData));
+	stackData = (int*) malloc(
+			stack->num * (discsCount + STACK_ITEM_ATTRS) * sizeof(int));
 	StackItem* item;
 	item = stack->top;
 	int offset;
 	offset = 0;
 	while (item != NULL) {
 		int i;
-		for (i = 0; i < discsCount + 4; i++) {
+		for (i = 0; i < discsCount + STACK_ITEM_ATTRS; i++) {
 			if (i < discsCount) {
 				stackData[offset + i] = item->data[i];
 			} else if (i == discsCount) {
@@ -121,7 +131,7 @@ int* serializeStack(Stack* stack) {
 				stackData[offset + i] = item->movedDisc;
 			}
 		}
-		offset += (discsCount + 4);
+		offset += (discsCount + STACK_ITEM_ATTRS);
 		item = item->next;
 	}
 	return stackData;
@@ -129,10 +139,10 @@ int* serializeStack(Stack* stack) {
 
 void deserializeStack(int* stackData, int size) {
 	int offset, bulk;
-	bulk = discsCount + 4;
+	bulk = discsCount + STACK_ITEM_ATTRS;
 	for (offset = 0; offset < size; offset += bulk) {
 		int* data;
-		data = (int*) malloc(discsCount * sizeof(data));
+		data = (int*) malloc(discsCount * sizeof(int));
 		int step, i, j, movedDisc;
 		int disc;
 		for (disc = 0; disc < discsCount; disc++) {
@@ -144,6 +154,37 @@ void deserializeStack(int* stackData, int size) {
 		movedDisc = stackData[offset + discsCount + 3];
 		push(data, step, i, j, movedDisc);
 	}
+}
+
+int* serializeSolution() {
+	int* data;
+	int i;
+	i = 0;
+	ProcessItem* item;
+	item = sq->head;
+	while (item != NULL) {
+		data[i++] = item->disc;
+		data[i++] = item->sourceTower;
+		data[i++] = item->destTower;
+		item = item->next;
+	}
+	return data;
+}
+
+SolutionQueue* deserializeSolution(int* data, int size) {
+	SolutionQueue* sq;
+	sq = malloc(sizeof(SolutionQueue));
+	int i;
+	for (i = 0; i < size;) {
+		ProcessItem* item;
+		item = malloc(sizeof(ProcessItem));
+		item->next = sq->head;
+		item->disc = data[i++];
+		item->sourceTower = data[i++];
+		item->destTower = data[i++];
+		sq->head = item;
+	}
+	return sq;
 }
 
 int loopDetected(Stack* stack) {
@@ -165,6 +206,7 @@ int loopDetected(Stack* stack) {
 }
 
 void processStepWithStack(struct SolutionQueue* sq) {
+
 	int counter;
 	counter = 0;
 
@@ -179,7 +221,7 @@ void processStepWithStack(struct SolutionQueue* sq) {
 
 		_towers = deserializeState(stack_data);
 
-		if (step > max || loopDetected(stack)) {
+		if (step > minSteps || loopDetected(stack)) {
 			/* not a perspective branch solution */
 			pop();
 			freeTowers(_towers, &towersCount);
@@ -201,8 +243,11 @@ void processStepWithStack(struct SolutionQueue* sq) {
 			freeTowers(_towers, &towersCount);
 
 			if (step <= min) {
-				// TODO prospective solution found!!
-				return;
+				// the best solution found!! (there cannot be anything better than this)
+				printf("\n\n\n\n--BEST SOLUTION FOUND at step %i\n", step);
+				fflush(stdout);
+				MPI_Send("F", 1, MPI_CHAR, MPI_ANY_SOURCE, MSG_FINISH,
+						MPI_COMM_WORLD);
 			} else {
 				return;
 			}
@@ -237,10 +282,15 @@ void processStepWithStack(struct SolutionQueue* sq) {
 				jStart = 0;
 			}
 			if (moved > 0) {
+				// disc with size i has been moved -> let's continue now with that step...
+				// ...however, if we then find out moving that disc doesn't lead to a solution,
+				// we will get back in the stack and move another disc
 				break;
 			}
 		}
 		if (moved == 0) {
+			// after trying all the possibilities, I couldn't move any disc at this step
+			// -> go back one step and try another branch
 			pop();
 		}
 		freeTowers(_towers, &towersCount);
@@ -251,9 +301,30 @@ void processStepWithStack(struct SolutionQueue* sq) {
  *  @param processor if negative, randomly select one to ask
  */
 void askForWork(int processor) {
+	idle = 1;
 	if (process_id == 0) {
-		// processor 0 shouldn't ask anyone for more work...
-		//	return;
+		// if processor 0 doesn't have any more work, send finalization token
+		printf("\nProcessor 0 issues finalization token");
+		fflush(stdout);
+		int color;
+		color = BLACK;
+		MPI_Send(&color, 1, MPI_INT, 1, MSG_TOKEN, MPI_COMM_WORLD);
+		//sleep(1);
+		if (minSteps <= max) {
+			// print best solution
+			ProcessItem* pi;
+			pi = sq->head;
+			printf("\n\nDONE, Steps: %i\n\n", minSteps);
+			fflush(stdout);
+			while (pi != NULL) {
+				printProcessItem(pi);
+				pi = pi->next;
+			}
+		} else {
+			printf("\nERROR: No solution found\n");
+			fflush(stdout);
+		}
+		return;
 	}
 	if (processor < 0) {
 		processor = random() % processors;
@@ -265,9 +336,8 @@ void askForWork(int processor) {
 	printf("\nProcessor %i is asking processor %i for work", process_id,
 			processor);
 	fflush(stdout);
-	MPI_Send("REQ", sizeof("REQ"), MPI_CHAR, processor, MSG_WORK_REQUEST,
-			MPI_COMM_WORLD);
-	sleep(1); // wait a little while
+	MPI_Send("REQ", 3, MPI_CHAR, processor, MSG_WORK_REQUEST, MPI_COMM_WORLD);
+	//sleep(1); // wait a little while
 }
 
 void describeMove(int* prevState, int* currentState, int* disc,
@@ -336,8 +406,8 @@ int process0(Tower *_towers, int _towersCount, int _discsCount, int _destTower) 
 	discsCount = _discsCount;
 	destTower = _destTower;
 
-	struct SolutionQueue sq;
-	sq.head = NULL;
+	sq = malloc(sizeof(SolutionQueue));
+	sq->head = NULL;
 
 	// calculate min and max (we know that the solution will be between those two)
 	min = minMoves(towers, towersCount, discsCount, destTower);
@@ -350,20 +420,7 @@ int process0(Tower *_towers, int _towersCount, int _discsCount, int _destTower) 
 	/* initial state */
 	push(serializeState(towers), 0, 0, 0, -1);
 
-	processStepWithStack(&sq);
-
-	if (minSteps <= max) {
-		// print best solution
-		ProcessItem* pi;
-		pi = sq.head;
-		printf("\n\nDONE, Steps: %i\n\n", minSteps);
-		while (pi != NULL) {
-			printProcessItem(pi);
-			pi = pi->next;
-		}
-	} else {
-		printf("\nERROR: No solution found\n");
-	}
+	processStepWithStack(sq);
 
 	return minSteps;
 }
@@ -372,17 +429,18 @@ int process0(Tower *_towers, int _towersCount, int _discsCount, int _destTower) 
 void run(int _process_id, int _processors) {
 	printf("\nCalling run on processor %i", _process_id);
 	fflush(stdout);
+	sq = malloc(sizeof(SolutionQueue));
 	process_id = _process_id;
 	processors = _processors;
-	// TODO the solution queue should not be here
-	struct SolutionQueue sq;
-	sq.head = NULL;
-	// end of todo
+	// the solution queue should not be here
+	sq->head = NULL;
+	// end of
 	if (process_id != 0) { // master (rank 0) processor was initialized when process0(...) was called
 		stack = initializeStack();
+		idle = 1;
 	}
 	int counter = 0;
-	int waiting = 1;
+	waiting = 1;
 	while (waiting || !isStackEmpty()) {
 		counter++;
 		if ((counter % CHECK_MSG_AMOUNT) == 0) {
@@ -391,9 +449,9 @@ void run(int _process_id, int _processors) {
 			MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag,
 					&status);
 			if (flag) {
-				//prisla zprava, je treba ji obslouzit
-				//v promenne status je tag (status.MPI_TAG), cislo odesilatele (status.MPI_SOURCE)
-				//a pripadne cislo chyby (status.MPI_ERROR)
+				// a message arrived, we need to react
+				// status contains tag (status.MPI_TAG), sender's process id (status.MPI_SOURCE)
+				// and error number (status.MPI_ERROR)
 				switch (status.MPI_TAG) {
 				case MSG_INIT: {
 					printf("\nProcess %i starting...", process_id);
@@ -413,6 +471,9 @@ void run(int _process_id, int _processors) {
 				}
 					break;
 				case MSG_WORK_REQUEST: { // another process requests some work
+					char* text;
+					MPI_Recv(&text, status._count, MPI_CHAR, status.MPI_SOURCE,
+							status.MPI_TAG, MPI_COMM_WORLD, &status);
 					printf("\nProcessor %i received request from %i",
 							process_id, status.MPI_SOURCE);
 					fflush(stdout);
@@ -420,9 +481,20 @@ void run(int _process_id, int _processors) {
 						// ok, I have some work for you
 						int* data;
 						Stack* divided;
+						printf("\nProcessor %i is going to divide its stack.",
+								process_id);
+						fflush(stdout);
 						divided = divideStack();
+						printf(
+								"\nProcessor %i has divided its stack and is now going to send data to %i",
+								process_id, status.MPI_SOURCE);
+						fflush(stdout);
 						data = serializeStack(divided);
-						MPI_Send(data, sizeof(data), MPI_CHAR,
+						printf("\nSending data from %i to %i with length %i",
+								process_id, status.MPI_SOURCE,
+								(discsCount + STACK_ITEM_ATTRS));
+						fflush(stdout);
+						MPI_Send(data, discsCount + STACK_ITEM_ATTRS, MPI_INT,
 								status.MPI_SOURCE, MSG_WORK_SENT,
 								MPI_COMM_WORLD);
 						printf("\nProcessor %i replies to %i by sending data.",
@@ -430,7 +502,7 @@ void run(int _process_id, int _processors) {
 						fflush(stdout);
 					} else {
 						// I have no work to send you
-						MPI_Send("N", sizeof("N"), MPI_CHAR, status.MPI_SOURCE,
+						MPI_Send("N", 1, MPI_CHAR, status.MPI_SOURCE,
 								MSG_WORK_NOWORK, MPI_COMM_WORLD);
 						printf(
 								"\nProcessor %i replies to %i saying 'I don't have anything for you'.",
@@ -440,64 +512,101 @@ void run(int _process_id, int _processors) {
 				}
 					break;
 				case MSG_WORK_SENT: { // new work has arrived!
-					int* data;
+					int data[status._count / sizeof(int)];
 					// receive the message
-					MPI_Recv(&data, status._count, MPI_INT, status.MPI_SOURCE,
-							status.MPI_TAG, MPI_COMM_WORLD, &status);
 					printf("\nProcessor %i received work from %i", process_id,
 							status.MPI_SOURCE);
 					fflush(stdout);
+					MPI_Recv(&data, status._count / sizeof(int), MPI_INT,
+							status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD,
+							&status);
 					// deserialize
-					deserializeStack(data, status._count);
+					deserializeStack(data, status._count / sizeof(int));
 					// recreate the latest tower
 					int step, i, j, prevMovedDisc;
 					towers = deserializeState(
 							top(&step, &i, &j, &prevMovedDisc));
 					// start processing
-					//--process(towers);
+					idle = 0;
 					// will start automatically, as the processStepWithStack method is called at the end of this loop
 				}
 					break;
 				case MSG_WORK_NOWORK: {
+					char* text;
+					MPI_Recv(&text, status._count, MPI_CHAR, status.MPI_SOURCE,
+							status.MPI_TAG, MPI_COMM_WORLD, &status);
+					idle = 1;
 					// process I requested to give me work has nothing either
+					printf(
+							"\nProcessor %i received 'I have no work for you' from %i",
+							process_id, status.MPI_SOURCE);
+					fflush(stdout);
 					// let's try another process
+					sleep(1);
 					askForWork(-1);
 					// (or switch to passive state and wait for token)
 				}
 					break;
 				case MSG_TOKEN: {
 					// finishing token
-					char* color;
-					MPI_Recv(&color, 1, MPI_CHAR, status.MPI_SOURCE,
+					// white flag means someone is still working
+					int color;
+					MPI_Recv(&color, status._count, MPI_INT, status.MPI_SOURCE,
 							status.MPI_TAG, MPI_COMM_WORLD, &status);
-					// - bily nebo cerny v zavislosti na stavu procesu
+					printf("\nColor received by %i is %i", process_id, color);
+					fflush(stdout);
+					if (process_id == 0) {
+						if (color == BLACK) {
+							// all processes have finished -> finalize
+							int i;
+							for (i = 1; i < processors; i++) {
+								// send finalization message to all processors
+								printf("\nSending finalization message to %i", i);
+								fflush(stdout);
+								MPI_Send("END", 3, MPI_CHAR, i, MSG_FINISH,
+										MPI_COMM_WORLD);
+							}
+							// continue the loop to collect results from other processors
+							break;
+						}
+					}
 					if (!isStackEmpty()) {
-						color = "W";
+						color = WHITE;
 					}
 					// pass the token to the next processor (or wrap to 0)
-					MPI_Send(color, 1, MPI_CHAR, (process_id + 1) % processors,
+					printf("\nSending '%i' token from processor %i to %i", color, process_id, (process_id+1)%processors);
+					fflush(stdout);
+					MPI_Send(&color, 1, MPI_INT, (process_id + 1) % processors,
 							MSG_TOKEN, MPI_COMM_WORLD);
 				}
 					break;
-				case MSG_FINISH: { //konec vypoctu - proces 0 pomoci tokenu zjistil, ze jiz nikdo nema praci
-								   //a rozeslal zpravu ukoncujici vypocet
-								   //mam-li reseni, odeslu procesu 0
-					char* solution;
-					MPI_Send(solution, 100/*solution size*/, MPI_CHAR, 0,
-							MSG_FINISH, MPI_COMM_WORLD);
+				case MSG_FINISH: { // this is the end...
+					char* text;
+					printf("\nProcessor %i receives finalization message.", process_id);
+					fflush(stdout);
+					MPI_Recv(&text, 3, MPI_CHAR, status.MPI_SOURCE,
+							status.MPI_TAG, MPI_COMM_WORLD, &status);
+					// if I have a solution, I send it to process 0
+					int* solution;
+					//solution = serializeSolution();
+					if (solution != NULL) {
+						MPI_Send(solution, minSteps * 3, MPI_INT, 0, MSG_RESULT,
+								MPI_COMM_WORLD);
+					}
 					//nasledne ukoncim svoji cinnost
 					//jestlize se meri cas, nezapomen zavolat koncovou barieru MPI_Barrier (MPI_COMM_WORLD)
-					int i = 0;
-					for (i = 0; i < towersCount; i++) {
-						freeDiscs(&towers[i]);
+					finalize();
+				}
+					break;
+				case MSG_RESULT: { // collect solutions from other processors
+					int* data;
+					MPI_Recv(&data, status._count, MPI_INT, status.MPI_SOURCE,
+							status.MPI_TAG, MPI_COMM_WORLD, &status);
+					SolutionQueue* sq;
+					sq = deserializeSolution(data, status._count);
+					if (1) { // all solutions received
+						finalize();
 					}
-					free(towers);
-					freeStack();
-
-					printf("\n***END***\n");
-
-					MPI_Finalize();
-					exit(0);
 				}
 					break;
 				default:
@@ -506,26 +615,21 @@ void run(int _process_id, int _processors) {
 				}
 			}
 		}
-		processStepWithStack(&sq);
+		if (!idle) {
+			processStepWithStack(sq);
+		}
 	}
 }
 
-/*
- static int**  serializeStateMatrix() {
- int ** stack_item, i;
- stack_item = (int**) malloc(discsCount * sizeof(int));
- if (stack_item == NULL) {
- perror("ERROR: stack_item row could not be allocated");
- }
- for (i = 0; i < discsCount ; i++) {
- stack_item[i] = (int *)malloc(sizeof(int) * 2);
- if (stack_item[i] == NULL)
- {
- perror("ERROR: stack_item column could not be allocated");
- }
- }
-
-
- return stack_item;
- }
- */
+void finalize() {
+	printf("\nFinalizing process %i\n", process_id);
+	fflush(stdout);
+	int i = 0;
+	for (i = 0; i < towersCount; i++) {
+		freeDiscs(&towers[i]);
+	}
+	free(towers);
+	freeStack();
+	MPI_Finalize();
+	exit(0);
+}

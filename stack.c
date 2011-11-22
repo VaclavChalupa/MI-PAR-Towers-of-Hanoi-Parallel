@@ -96,12 +96,20 @@ int stackSize() {
 
 Stack* divideStack() {
 	Stack* divided;
-	divided = malloc(sizeof(divided));
-	divided->top = NULL;
-	divided->num = 0;
+	divided = (Stack*) malloc(sizeof(Stack));
 	StackItem* item;
-	StackItem* prev;
+	StackItem* root;
 	item = stack->top;
+	root = (StackItem*) malloc(sizeof(StackItem));
+	root->data = item->data;
+	root->step = item->step;
+	root->i = item->i;
+	root->j = item->j;
+	root->movedDisc = item->movedDisc;
+	root->next = NULL;
+	divided->top = root;
+	divided->num = 1;
+	/*
 	int i;
 	while (item->next != NULL) {
 		i++;
@@ -110,11 +118,12 @@ Stack* divideStack() {
 			StackItem* tmp;
 			tmp = item->next;
 			tmp->next = prev;
+			stack->top = tmp;
 			// put on the divided stack
 			divided->top = item;
 		}
 		prev = item;
 		item = stack->top;
-	}
+	}*/
 	return divided;
 }
