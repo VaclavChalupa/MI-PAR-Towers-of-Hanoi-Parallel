@@ -9,15 +9,16 @@
 #define WHITE			  1
 #define BLACK			  0
 
-#define MSG_WORK_REQUEST 1000
-#define MSG_WORK_SENT    1001
-#define MSG_WORK_NOWORK  1002
-#define MSG_TOKEN        1003
-#define MSG_INIT		 1004
-#define MSG_FINISH       1005
-#define MSG_RESULT		 1006
+#define MSG_INIT		 1000
+#define MSG_WORK_REQUEST 1001
+#define MSG_WORK_SENT    1002
+#define MSG_WORK_NOWORK  1003
+#define MSG_NEW_BEST	 1004
+#define MSG_TOKEN        1005
+#define MSG_FINISH       1006
+#define MSG_RESULT		 1007
 
-#include "state_printer.h";
+#include "state_printer.h"
 #include "tower.h"
 #include "stack_item.h"
 #include "stack.h"
@@ -237,6 +238,14 @@ void processStepWithStack(struct SolutionQueue* sq) {
 				max = step;
 				minSteps = step;
 				inspectStack(stack, sq);
+				printf("\nProcess %i informs everyone about new best = %i", process_id, max);
+				fflush(stdout);
+				int i;
+				for (i = 0; i < processors; i++) {
+					if (i != process_id) {
+						MPI_Send(&max, 1, MPI_CHAR, i, MSG_NEW_BEST, MPI_COMM_WORLD);
+					}
+				}
 			}
 
 			pop();
@@ -452,12 +461,14 @@ void run(int _process_id, int _processors) {
 				// a message arrived, we need to react
 				// status contains tag (status.MPI_TAG), sender's process id (status.MPI_SOURCE)
 				// and error number (status.MPI_ERROR)
+				int mpi_count;
 				switch (status.MPI_TAG) {
 				case MSG_INIT: {
 					printf("\nProcess %i starting...", process_id);
 					fflush(stdout);
 					int initData[3];
-					MPI_Recv(&initData, status._count, MPI_INT,
+					MPI_Get_count(&status, MPI_INT, &mpi_count);
+					MPI_Recv(&initData, mpi_count, MPI_INT,
 							status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD,
 							&status);
 					towersCount = initData[0];
@@ -472,7 +483,8 @@ void run(int _process_id, int _processors) {
 					break;
 				case MSG_WORK_REQUEST: { // another process requests some work
 					char* text;
-					MPI_Recv(&text, status._count, MPI_CHAR, status.MPI_SOURCE,
+					MPI_Get_count(&status, MPI_CHAR, &mpi_count);
+					MPI_Recv(&text, mpi_count, MPI_CHAR, status.MPI_SOURCE,
 							status.MPI_TAG, MPI_COMM_WORLD, &status);
 					printf("\nProcessor %i received request from %i",
 							process_id, status.MPI_SOURCE);
@@ -512,18 +524,19 @@ void run(int _process_id, int _processors) {
 				}
 					break;
 				case MSG_WORK_SENT: { // new work has arrived!
-					int data[status._count / sizeof(int)];
+					MPI_Get_count(&status, MPI_INT, &mpi_count);
+					int data[mpi_count];
 					// receive the message
 					printf("\nProcessor %i received work from %i", process_id,
 							status.MPI_SOURCE);
 					fflush(stdout);
-					MPI_Recv(&data, status._count / sizeof(int), MPI_INT,
+					MPI_Recv(&data, mpi_count, MPI_INT,
 							status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD,
 							&status);
 					// deserialize
-					deserializeStack(data, status._count / sizeof(int));
+					deserializeStack(data, mpi_count);
 					// recreate the latest tower
-					int step, i, j, prevMovedDisc;
+					int step, i, j, prevMovedDisc;`
 					towers = deserializeState(
 							top(&step, &i, &j, &prevMovedDisc));
 					// start processing
@@ -533,7 +546,7 @@ void run(int _process_id, int _processors) {
 					break;
 				case MSG_WORK_NOWORK: {
 					char* text;
-					MPI_Recv(&text, status._count, MPI_CHAR, status.MPI_SOURCE,
+					MPI_Recv(&text, 1, MPI_CHAR, status.MPI_SOURCE,
 							status.MPI_TAG, MPI_COMM_WORLD, &status);
 					idle = 1;
 					// process I requested to give me work has nothing either
@@ -547,11 +560,23 @@ void run(int _process_id, int _processors) {
 					// (or switch to passive state and wait for token)
 				}
 					break;
+				case MSG_NEW_BEST: {
+					int best;
+					MPI_Recv(&best, 1, MPI_INT, status.MPI_SOURCE,
+							status.MPI_TAG, MPI_COMM_WORLD, &status);
+					printf("\nProcessor %i received a new best '%i' from %i",
+							process_id, best, status.MPI_SOURCE);
+					if (best < max) {
+						max = best;
+					}
+				}
+					break;
 				case MSG_TOKEN: {
 					// finishing token
 					// white flag means someone is still working
 					int color;
-					MPI_Recv(&color, status._count, MPI_INT, status.MPI_SOURCE,
+					MPI_Get_count(&status, MPI_INT, &mpi_count);
+					MPI_Recv(&color, mpi_count, MPI_INT, status.MPI_SOURCE,
 							status.MPI_TAG, MPI_COMM_WORLD, &status);
 					printf("\nColor received by %i is %i", process_id, color);
 					fflush(stdout);
@@ -561,7 +586,8 @@ void run(int _process_id, int _processors) {
 							int i;
 							for (i = 1; i < processors; i++) {
 								// send finalization message to all processors
-								printf("\nSending finalization message to %i", i);
+								printf("\nSending finalization message to %i",
+										i);
 								fflush(stdout);
 								MPI_Send("END", 3, MPI_CHAR, i, MSG_FINISH,
 										MPI_COMM_WORLD);
@@ -574,7 +600,8 @@ void run(int _process_id, int _processors) {
 						color = WHITE;
 					}
 					// pass the token to the next processor (or wrap to 0)
-					printf("\nSending '%i' token from processor %i to %i", color, process_id, (process_id+1)%processors);
+					printf("\nSending '%i' token from processor %i to %i",
+							color, process_id, (process_id + 1) % processors);
 					fflush(stdout);
 					MPI_Send(&color, 1, MPI_INT, (process_id + 1) % processors,
 							MSG_TOKEN, MPI_COMM_WORLD);
@@ -582,7 +609,8 @@ void run(int _process_id, int _processors) {
 					break;
 				case MSG_FINISH: { // this is the end...
 					char* text;
-					printf("\nProcessor %i receives finalization message.", process_id);
+					printf("\nProcessor %i receives finalization message.",
+							process_id);
 					fflush(stdout);
 					MPI_Recv(&text, 3, MPI_CHAR, status.MPI_SOURCE,
 							status.MPI_TAG, MPI_COMM_WORLD, &status);
@@ -600,10 +628,11 @@ void run(int _process_id, int _processors) {
 					break;
 				case MSG_RESULT: { // collect solutions from other processors
 					int* data;
-					MPI_Recv(&data, status._count, MPI_INT, status.MPI_SOURCE,
+					MPI_Get_count(&status, MPI_INT, &mpi_count);
+					MPI_Recv(&data, mpi_count, MPI_INT, status.MPI_SOURCE,
 							status.MPI_TAG, MPI_COMM_WORLD, &status);
 					SolutionQueue* sq;
-					sq = deserializeSolution(data, status._count);
+					sq = deserializeSolution(data, mpi_count);
 					if (1) { // all solutions received
 						finalize();
 					}

@@ -3,7 +3,7 @@
  *
  */
 
-#define MSG_INIT 1004
+#define MSG_INIT 1000
 
 #include <stdio.h>
 #include <stdlib.h>
